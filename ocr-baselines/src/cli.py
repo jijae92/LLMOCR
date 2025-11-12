@@ -6,7 +6,12 @@ from typing import Optional
 from PIL import Image
 
 
-def get_pipeline(model: str, device: str, lang: str = "korean"):
+def get_pipeline(
+    model: str,
+    device: str,
+    lang: str = "korean",
+    adapter_path: Optional[str] = None
+):
     """
     Get OCR pipeline by model name.
 
@@ -14,16 +19,17 @@ def get_pipeline(model: str, device: str, lang: str = "korean"):
         model: Model name ('trocr', 'donut', 'pix2struct', 'paddleocr')
         device: Device to use ('auto', 'cpu', 'cuda', 'mps')
         lang: Language for PaddleOCR
+        adapter_path: Path to LoRA adapter (for trocr/donut)
 
     Returns:
         Initialized pipeline
     """
     if model == "trocr":
         from src.pipelines.trocr_pipeline import TrOCRPipeline
-        return TrOCRPipeline(device=device)
+        return TrOCRPipeline(device=device, adapter_path=adapter_path)
     elif model == "donut":
         from src.pipelines.donut_pipeline import DonutPipeline
-        return DonutPipeline(device=device)
+        return DonutPipeline(device=device, adapter_path=adapter_path)
     elif model == "pix2struct":
         from src.pipelines.pix2struct_pipeline import Pix2StructPipeline
         return Pix2StructPipeline(device=device)
@@ -66,6 +72,11 @@ def main():
         help="Language for PaddleOCR (korean, en, ch, etc.)",
     )
     parser.add_argument(
+        "--adapter-path",
+        type=str,
+        help="Path to LoRA adapter checkpoint (for fine-tuned models)",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         help="Output file for results (JSON format)",
@@ -92,8 +103,15 @@ def main():
 
     # Get pipeline
     print(f"Loading {args.model} model on {args.device}...")
+    if hasattr(args, 'adapter_path') and args.adapter_path:
+        print(f"  With LoRA adapter: {args.adapter_path}")
     try:
-        pipeline = get_pipeline(args.model, args.device, args.lang)
+        pipeline = get_pipeline(
+            args.model,
+            args.device,
+            args.lang,
+            getattr(args, 'adapter_path', None)
+        )
     except Exception as e:
         print(f"Error loading model: {e}")
         return 1

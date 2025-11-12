@@ -51,6 +51,7 @@ htmlcov/
 # Logs
 *.log
 *.jsonl
+!data/*.jsonl
 ocr_inference.jsonl
 
 # Output files

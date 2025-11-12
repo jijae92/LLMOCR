@@ -5,6 +5,7 @@ A comprehensive OCR baseline project with multiple state-of-the-art models for c
 ## Features
 
 - **Multiple Models**: TrOCR, Donut, Pix2Struct, PaddleOCR
+- **LoRA Fine-tuning**: Memory-efficient domain adaptation with macOS/MPS support
 - **CLI Interface**: Easy command-line interface for quick inference
 - **REST API**: FastAPI-based server for production use
 - **Evaluation Framework**: Automated CER/WER and latency benchmarking
@@ -74,6 +75,7 @@ python -m src.cli --model paddleocr --image tests/data_samples/receipt_ko.jpg --
 - `--image`: Path to input image
 - `--device`: Device to run on (`auto`, `cpu`, `cuda`, `mps`)
 - `--lang`: Language for PaddleOCR (default: `korean`)
+- `--adapter-path`: Path to LoRA adapter for fine-tuned models (optional)
 - `--output`: Output JSON file (optional)
 - `--verbose`: Print detailed metadata
 
@@ -181,25 +183,318 @@ PADDLEOCR:
 ================================================================================
 ```
 
+## Fine-tuning with LoRA (macOS/MPS Compatible)
+
+Fine-tune OCR models on your domain-specific data using LoRA (Low-Rank Adaptation) for memory-efficient training.
+
+### 🍎 macOS Support
+
+**LoRA training is fully supported on Apple Silicon (M1/M2/M3) with MPS acceleration.**
+
+⚠️  **Important for Mac Users:**
+- **LoRA (FP16/FP32)**: ✅ Fully supported on MPS
+- **QLoRA (4-bit)**: ❌ NOT supported on macOS (bitsandbytes limitation)
+- For QLoRA: Train on cloud GPU, download adapters for local inference
+
+### Quick Start
+
+1. **Prepare your data** (JSONL, CSV, or directory format):
+   ```bash
+   # Example: data/train.jsonl
+   {"image": "path/to/img1.jpg", "text": "ground truth text 1"}
+   {"image": "path/to/img2.jpg", "text": "ground truth text 2"}
+   ```
+
+2. **Train TrOCR with LoRA** (Mac/MPS):
+   ```bash
+   python -m src.train.train_trocr_lora \
+     --base_model microsoft/trocr-base-printed \
+     --train_json data/train.jsonl \
+     --val_json data/val.jsonl \
+     --lora_r 16 --lora_alpha 32 --lora_dropout 0.05 \
+     --per_device_train_batch_size 2 \
+     --lr 2e-4 \
+     --epochs 3 \
+     --output_dir runs/trocr-lora \
+     --device auto
+   ```
+
+3. **Use fine-tuned model** for inference:
+   ```bash
+   python -m src.cli \
+     --model trocr \
+     --adapter-path runs/trocr-lora \
+     --image path/to/document.jpg \
+     --device auto \
+     --verbose
+   ```
+
+### Training Scripts
+
+#### TrOCR LoRA
+
+```bash
+python -m src.train.train_trocr_lora \
+  --base_model microsoft/trocr-base-printed \
+  --train_json data/train.jsonl \
+  --val_json data/val.jsonl \
+  --lora_r 16 \
+  --lora_alpha 32 \
+  --lora_dropout 0.05 \
+  --per_device_train_batch_size 2 \
+  --gradient_accumulation_steps 1 \
+  --lr 2e-4 \
+  --epochs 3 \
+  --warmup_steps 100 \
+  --logging_steps 10 \
+  --eval_steps 100 \
+  --save_steps 200 \
+  --output_dir runs/trocr-lora \
+  --device auto
+```
+
+#### Donut LoRA
+
+```bash
+python -m src.train.train_donut_lora \
+  --base_model naver-clova-ix/donut-base \
+  --train_json data/train.jsonl \
+  --val_json data/val.jsonl \
+  --lora_r 16 \
+  --lora_alpha 32 \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 2 \
+  --lr 2e-4 \
+  --epochs 3 \
+  --output_dir runs/donut-lora \
+  --device auto
+```
+
+### LoRA Parameters
+
+| Parameter | Description | Typical Values | Mac Recommendation |
+|-----------|-------------|----------------|-------------------|
+| `lora_r` | LoRA rank (controls adapter size) | 4-64 | 16 (good balance) |
+| `lora_alpha` | Scaling factor | 8-128 | 32 (typically 2×r) |
+| `lora_dropout` | Dropout rate | 0.0-0.1 | 0.05 |
+| `batch_size` | Samples per batch | 1-8 | 2 for TrOCR, 1 for Donut |
+| `gradient_accumulation_steps` | Accumulate gradients | 1-8 | 1-2 |
+| `learning_rate` | Learning rate | 1e-5 to 5e-4 | 2e-4 |
+
+### Memory Requirements (macOS Unified Memory)
+
+**TrOCR LoRA:**
+- Batch size 2, r=16: ~10-14GB
+- Batch size 1, r=16: ~8-10GB
+- Batch size 1, r=8: ~6-8GB
+
+**Donut LoRA (larger model):**
+- Batch size 1, r=16: ~12-16GB
+- Batch size 1, r=8: ~10-12GB
+
+**If Out of Memory:**
+1. Reduce `per_device_train_batch_size` to 1
+2. Increase `gradient_accumulation_steps` to 2 or 4
+3. Reduce `lora_r` to 8 or 4
+4. Use `--no_mps` to fall back to CPU (slower)
+
+### Data Preparation
+
+The training scripts support three data formats:
+
+**1. JSONL Format** (Recommended):
+```jsonl
+{"image": "path/to/img1.jpg", "text": "text 1"}
+{"image": "path/to/img2.jpg", "text": "text 2"}
+```
+
+**2. CSV Format:**
+```csv
+image,text
+path/to/img1.jpg,"text 1"
+path/to/img2.jpg,"text 2"
+```
+
+**3. Directory Format:**
+```
+data/train/
+├── img1.jpg
+├── img1.txt
+├── img2.jpg
+├── img2.txt
+```
+
+See `data/README.md` for detailed data preparation guide.
+
+### Configuration Files
+
+Pre-configured YAML files are available in `configs/`:
+
+- `trocr_lora_mac.yaml` - TrOCR LoRA for macOS/MPS
+- `donut_lora_mac.yaml` - Donut LoRA for macOS/MPS
+- `trocr_qlora_cloud.yaml` - TrOCR QLoRA for cloud GPU (CUDA only)
+
+### QLoRA (4-bit) for Cloud GPU
+
+**⚠️  NOT supported on macOS** - Requires CUDA GPU with bitsandbytes
+
+For QLoRA training:
+
+1. **Train on cloud GPU** (A10, A100, H100):
+   ```bash
+   # On cloud machine with CUDA
+   python -m src.train.train_trocr_lora \
+     --base_model microsoft/trocr-base-printed \
+     --train_json data/train.jsonl \
+     --val_json data/val.jsonl \
+     --lora_r 64 \
+     --lora_alpha 128 \
+     --per_device_train_batch_size 8 \
+     --device cuda \
+     --fp16 \
+     --output_dir runs/trocr-qlora
+   ```
+
+2. **Download adapter** (only ~tens of MB):
+   ```bash
+   scp cloud:/path/runs/trocr-qlora ./runs/
+   ```
+
+3. **Use locally on Mac**:
+   ```bash
+   python -m src.cli \
+     --model trocr \
+     --adapter-path runs/trocr-qlora \
+     --image document.jpg
+   ```
+
+### Training Tips
+
+#### For Best Results:
+- **Data quality**: Clean, accurate ground truth is critical
+- **Data quantity**: 1,000+ samples recommended (100 minimum for experiments)
+- **Domain matching**: Use images similar to your target use case
+- **Evaluation**: Always use a validation set to monitor overfitting
+
+#### Mac-Specific:
+- **MPS stability**: If crashes occur, try `--no_mps` to use CPU
+- **PyTorch version**: Use PyTorch 2.0+ for best MPS support
+- **Monitor memory**: Use Activity Monitor to track memory usage
+- **Batch size**: Start small (1-2) and increase if memory allows
+
+#### General:
+- **LoRA rank**: Higher r = more parameters (better fit, more memory)
+- **Learning rate**: Start with 2e-4, reduce if unstable
+- **Epochs**: 3-5 epochs typically sufficient
+- **Checkpointing**: Best model saved automatically based on validation CER
+
+### Example Workflow
+
+1. **Collect domain data** (100-1000+ images):
+   ```bash
+   data/receipts/
+   ├── r001.jpg + r001.txt
+   ├── r002.jpg + r002.txt
+   ...
+   ```
+
+2. **Create JSONL dataset**:
+   ```python
+   import json
+   from pathlib import Path
+
+   with open("data/train.jsonl", "w") as f:
+       for img in Path("data/receipts").glob("*.jpg"):
+           txt = img.with_suffix(".txt")
+           if txt.exists():
+               text = txt.read_text()
+               f.write(json.dumps({"image": str(img), "text": text}) + "\n")
+   ```
+
+3. **Train on Mac with MPS**:
+   ```bash
+   python -m src.train.train_trocr_lora \
+     --train_json data/train.jsonl \
+     --val_json data/val.jsonl \
+     --output_dir runs/receipts-lora \
+     --epochs 3 \
+     --device auto
+   ```
+
+4. **Evaluate improvement**:
+   ```bash
+   # Baseline
+   python -m src.eval --data-dir tests/data_samples --models trocr
+
+   # Fine-tuned
+   python -m src.cli \
+     --model trocr \
+     --adapter-path runs/receipts-lora \
+     --image test_receipt.jpg
+   ```
+
+5. **Monitor training**:
+   - Training metrics: `runs/receipts-lora/train_metrics.json`
+   - Validation CER: Logged during training
+   - Best checkpoint: Auto-saved based on lowest CER
+
+### Troubleshooting
+
+**Out of Memory:**
+```bash
+# Reduce batch size and increase gradient accumulation
+python -m src.train.train_trocr_lora \
+  --per_device_train_batch_size 1 \
+  --gradient_accumulation_steps 4 \
+  --lora_r 8
+```
+
+**MPS Crashes:**
+```bash
+# Fall back to CPU
+python -m src.train.train_trocr_lora --no_mps
+```
+
+**Slow Training:**
+```bash
+# Use smaller model or reduce data
+# Consider cloud GPU for large-scale training
+```
+
 ## Project Structure
 
 ```
 ocr-baselines/
 ├── pyproject.toml              # Dependencies and project metadata
 ├── README.md                   # This file
+├── configs/                    # Training configuration files
+│   ├── trocr_lora_mac.yaml
+│   ├── donut_lora_mac.yaml
+│   └── trocr_qlora_cloud.yaml
+├── data/                       # Training data
+│   ├── README.md               # Data preparation guide
+│   ├── train.jsonl             # Training samples
+│   └── val.jsonl               # Validation samples
+├── runs/                       # Training outputs (checkpoints)
+│   └── (created during training)
 ├── src/
 │   ├── __init__.py
 │   ├── cli.py                  # Command-line interface
 │   ├── eval.py                 # Evaluation script
-│   ├── pipelines/              # Model pipelines
+│   ├── pipelines/              # Model pipelines (with LoRA support)
 │   │   ├── __init__.py
 │   │   ├── trocr_pipeline.py
 │   │   ├── donut_pipeline.py
 │   │   ├── pix2struct_pipeline.py
 │   │   └── paddleocr_pipeline.py
-│   └── server/                 # FastAPI server
+│   ├── server/                 # FastAPI server
+│   │   ├── __init__.py
+│   │   └── app.py
+│   └── train/                  # Training scripts (LoRA fine-tuning)
 │       ├── __init__.py
-│       └── app.py
+│       ├── data_loader.py      # Data loading utilities
+│       ├── train_trocr_lora.py # TrOCR LoRA training
+│       └── train_donut_lora.py # Donut LoRA training
 └── tests/
     ├── __init__.py
     ├── test_cli.py             # Basic tests

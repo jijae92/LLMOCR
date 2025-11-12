@@ -1,0 +1,48 @@
+# TrOCR LoRA Training Configuration (macOS/MPS Optimized)
+# Designed for Apple Silicon Macs with 16GB+ Unified Memory
+
+model:
+  base_model: "microsoft/trocr-base-printed"
+  # For multilingual/Korean, consider: "microsoft/trocr-large-handwritten"
+
+lora:
+  r: 16                    # LoRA rank (4-64, lower = fewer params)
+  alpha: 32                # LoRA scaling factor (typically 2*r)
+  dropout: 0.05            # Dropout rate for LoRA layers
+  target_modules:          # Modules to apply LoRA to
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "out_proj"
+    - "fc1"
+    - "fc2"
+
+data:
+  train_json: "data/train.jsonl"
+  val_json: "data/val.jsonl"
+  max_target_length: 512
+
+training:
+  output_dir: "runs/trocr-lora"
+  per_device_train_batch_size: 2  # Adjust based on available memory
+  per_device_eval_batch_size: 2
+  learning_rate: 2.0e-4
+  num_train_epochs: 3
+  warmup_steps: 100
+  gradient_accumulation_steps: 1   # Increase if OOM (e.g., 2 or 4)
+
+  # Evaluation
+  eval_steps: 100
+  save_steps: 200
+  logging_steps: 10
+
+  # Device
+  device: "auto"                   # Will use MPS if available
+  no_mps: false                    # Set true to force CPU
+  fp16: false                      # Not recommended for MPS
+
+# Memory optimization tips:
+# - If OOM: Reduce batch_size to 1 and increase gradient_accumulation_steps
+# - If still OOM: Reduce lora.r to 8 or 4
+# - Monitor memory: Activity Monitor > Memory tab
+# - Expected memory usage: ~10-14GB for batch_size=2, r=16

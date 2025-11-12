@@ -1,9 +1,11 @@
 """TrOCR pipeline for OCR inference."""
 import time
 from typing import Dict, Any, Optional
+from pathlib import Path
 from PIL import Image
 import torch
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+from peft import PeftModel
 
 
 class TrOCRPipeline:
@@ -14,6 +16,7 @@ class TrOCRPipeline:
         model_name: str = "microsoft/trocr-base-printed",
         device: str = "auto",
         max_length: int = 512,
+        adapter_path: Optional[str] = None,
     ):
         """
         Initialize TrOCR pipeline.
@@ -22,14 +25,24 @@ class TrOCRPipeline:
             model_name: HuggingFace model name
             device: Device to run on ('auto', 'cpu', 'cuda', 'mps')
             max_length: Maximum generation length
+            adapter_path: Path to LoRA adapter checkpoint (optional)
         """
         self.model_name = model_name
         self.max_length = max_length
         self.device = self._get_device(device)
+        self.adapter_path = adapter_path
 
         # Load processor and model
         self.processor = TrOCRProcessor.from_pretrained(model_name)
         self.model = VisionEncoderDecoderModel.from_pretrained(model_name)
+
+        # Load LoRA adapter if provided
+        if adapter_path:
+            print(f"Loading LoRA adapter from: {adapter_path}")
+            self.model = PeftModel.from_pretrained(self.model, adapter_path)
+            # Merge adapter weights for faster inference (optional)
+            # self.model = self.model.merge_and_unload()
+
         self.model.to(self.device)
         self.model.eval()
 
@@ -132,6 +145,7 @@ class TrOCRPipeline:
         if return_metadata:
             result["metadata"] = {
                 "model": self.model_name,
+                "adapter": self.adapter_path if self.adapter_path else None,
                 "engine": "pytorch",
                 "device": str(self.device),
                 "latency_ms": latency_ms,

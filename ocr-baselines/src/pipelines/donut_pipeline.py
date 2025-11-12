@@ -1,9 +1,11 @@
 """Donut pipeline for OCR inference."""
 import time
 from typing import Dict, Any, Optional
+from pathlib import Path
 from PIL import Image
 import torch
 from transformers import DonutProcessor, VisionEncoderDecoderModel
+from peft import PeftModel
 
 
 class DonutPipeline:
@@ -15,6 +17,7 @@ class DonutPipeline:
         device: str = "auto",
         max_length: int = 512,
         task_prompt: str = "<s_cord-v2>",
+        adapter_path: Optional[str] = None,
     ):
         """
         Initialize Donut pipeline.
@@ -24,15 +27,23 @@ class DonutPipeline:
             device: Device to run on ('auto', 'cpu', 'cuda', 'mps')
             max_length: Maximum generation length
             task_prompt: Task prompt for Donut model
+            adapter_path: Path to LoRA adapter checkpoint (optional)
         """
         self.model_name = model_name
         self.max_length = max_length
         self.task_prompt = task_prompt
         self.device = self._get_device(device)
+        self.adapter_path = adapter_path
 
         # Load processor and model
         self.processor = DonutProcessor.from_pretrained(model_name)
         self.model = VisionEncoderDecoderModel.from_pretrained(model_name)
+
+        # Load LoRA adapter if provided
+        if adapter_path:
+            print(f"Loading LoRA adapter from: {adapter_path}")
+            self.model = PeftModel.from_pretrained(self.model, adapter_path)
+
         self.model.to(self.device)
         self.model.eval()
 
@@ -153,6 +164,7 @@ class DonutPipeline:
         if return_metadata:
             result["metadata"] = {
                 "model": self.model_name,
+                "adapter": self.adapter_path if self.adapter_path else None,
                 "engine": "pytorch",
                 "device": str(self.device),
                 "latency_ms": latency_ms,
