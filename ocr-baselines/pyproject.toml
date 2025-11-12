@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr-baselines"
+version = "0.1.0"
+description = "OCR baselines with multiple models (TrOCR, Donut, Pix2Struct, PaddleOCR)"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "transformers>=4.30.0",
+    "pillow>=10.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "datasets>=2.12.0",
+    "peft>=0.4.0",
+    "accelerate>=0.20.0",
+    "onnxruntime>=1.15.0",
+    "optimum[exporters]>=1.10.0",
+    "jiwer>=3.0.0",
+    "python-Levenshtein>=0.21.0",
+    "paddlepaddle>=2.5.0",
+    "paddleocr>=2.7.0",
+    "sentencepiece>=0.1.99",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.7.0",
+    "ruff>=0.0.280",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"

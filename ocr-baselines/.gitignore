@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Model caches
+.cache/
+.huggingface/
+
+# Logs
+*.log
+*.jsonl
+ocr_inference.jsonl
+
+# Output files
+results/
+outputs/
+*.json
+!pyproject.json
+
+# Environment variables
+.env
+.env.local
+
+# Generated images (optional - remove if you want to track them)
+tests/data_samples/*.jpg
+tests/data_samples/*.png
+!tests/data_samples/.gitkeep
+
+# Jupyter notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# OS
+Thumbs.db
