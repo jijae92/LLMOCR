@@ -48,6 +48,11 @@ htmlcov/
 .cache/
 .huggingface/
 
+# Exported models
+models/
+*.onnx
+*.pt
+
 # Logs
 *.log
 *.jsonl
