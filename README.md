@@ -10,6 +10,7 @@ This project provides a complete infrastructure for:
 - **Data Management**: Download, clean, and process Korean OCR datasets (AI-Hub, SynthDoG-ko)
 - **Benchmarking**: Automated evaluation with multiple metrics (CER, WER, throughput, latency)
 - **Continuous Learning**: Automated retraining and regression checking pipeline
+- **GUI & Operations**: Streamlit interface with error analysis, audit logging, and visualization
 - **Reproducibility**: Standardized data formats and evaluation protocols
 
 ## 📁 Project Structure
@@ -33,6 +34,18 @@ LLMOCR/
 │   ├── run_bench.py             # Main benchmark runner
 │   ├── continuous_learning.py   # Continuous learning pipeline
 │   └── example_workflow.py      # Example usage
+│
+├── gui/                          # Streamlit web interface
+│   ├── streamlit_app.py         # Main GUI application
+│   └── README.md                # GUI documentation
+│
+├── tools/                        # Operational tools
+│   ├── audit_logging/           # Audit logging system
+│   ├── error_analysis/          # Error analysis tools
+│   └── demo_gui.py              # Demo script
+│
+├── utils/                        # Utility modules
+│   └── visualization/           # Visualization tools
 │
 ├── models/                       # Model storage
 │   ├── baseline/                # Base models
@@ -62,6 +75,8 @@ pip install -r requirements.txt
 
 ### 2. Run Quick Demo
 
+**Option A: Data Pipeline Demo**
+
 Test the pipeline with a small dataset (200 samples):
 
 ```bash
@@ -74,6 +89,35 @@ This will:
 3. Create train/val/test splits
 4. Run benchmark evaluation
 5. Generate reports
+
+**Option B: GUI & Operations Demo**
+
+Test the GUI and operational features:
+
+```bash
+python tools/demo_gui.py
+```
+
+This demonstrates:
+1. Audit logging system
+2. Error analysis tools
+3. Bounding box visualization
+4. High DPI retry functionality
+
+**Option C: Launch Streamlit GUI**
+
+Start the interactive web interface:
+
+```bash
+streamlit run gui/streamlit_app.py
+```
+
+Access the GUI at `http://localhost:8501` to:
+- Upload and process images
+- Visualize predictions with bounding boxes
+- Analyze errors interactively
+- View audit logs
+- Batch process multiple images
 
 ### 3. Download Full Datasets
 
@@ -283,6 +327,179 @@ def predict(self, image_path: Path) -> str:
     return ' '.join(results)
 ```
 
+## 🖥️ GUI & Operational Features
+
+### Streamlit Web Interface
+
+Launch the interactive GUI:
+
+```bash
+streamlit run gui/streamlit_app.py
+```
+
+**Key Features:**
+
+1. **📝 Single Image Processing**
+   - Upload and process images in real-time
+   - Visualize bounding boxes with confidence scores
+   - **High DPI Retry**: Automatically retry with 2x DPI when confidence < 80%
+   - Adjustable preprocessing (DPI scale, denoise, sharpen)
+   - Color-coded confidence (Green: >90%, Yellow: 70-90%, Red: <70%)
+
+2. **📊 Error Analysis Dashboard**
+   - Upload benchmark results
+   - View top N samples with highest CER/WER
+   - Character-level diff visualization (color-coded)
+   - Error pattern analysis (substitutions, insertions, deletions)
+   - Identify systematic issues for model improvement
+
+3. **📋 Audit Log Viewer**
+   - Query historical OCR operations
+   - Filter by date, model, engine, CER threshold
+   - Performance statistics and trends
+   - Export reports (Markdown, CSV)
+   - Full traceability of model versions and parameters
+
+4. **⚡ Batch Processing**
+   - Process multiple images concurrently
+   - Progress tracking
+   - Export results as CSV
+   - Configurable preprocessing per batch
+
+See [gui/README.md](gui/README.md) for detailed documentation.
+
+### Audit Logging
+
+Track all OCR operations with full audit trail:
+
+```python
+from tools.audit_logging import AuditLogger, ModelInfo, PreprocessingParams, EngineType
+
+# Initialize logger
+logger = AuditLogger(log_dir="logs/audit")
+
+# Model and preprocessing info
+model_info = ModelInfo(
+    model_name="trocr-korean",
+    model_version="v1.0.0",
+    model_path="models/trocr",
+    adapter_name="receipts_lora",  # Optional
+    engine=EngineType.PYTORCH,
+)
+
+preprocess_params = PreprocessingParams(
+    dpi_scale=1.5,
+    denoise=True,
+    sharpen=False,
+)
+
+# Log inference
+logger.log_inference(
+    image_path=Path("input.jpg"),
+    model_info=model_info,
+    preprocessing_params=preprocess_params,
+    prediction="예측 결과",
+    confidence=0.95,
+    inference_time_ms=123.45,
+    ground_truth="정답",  # Optional
+    cer=0.05,  # Optional
+    wer=0.10,  # Optional
+)
+
+# Query logs
+entries = logger.query_logs(
+    start_date="2025-01-01",
+    min_cer=0.1,  # Only errors > 10%
+)
+
+# Export report
+logger.export_report(Path("audit_report.md"), entries)
+```
+
+**Logged Information:**
+- Input hash (SHA256)
+- Model name, version, adapter
+- Engine type (PyTorch/ONNX/OpenVINO/TensorRT)
+- Preprocessing parameters
+- Prediction, confidence, metrics
+- Timestamps and performance
+
+### Error Analysis
+
+Analyze and visualize OCR errors:
+
+```python
+from tools.error_analysis import ErrorAnalyzer
+
+analyzer = ErrorAnalyzer(output_dir="reports/errors")
+
+# Find top errors
+error_samples = analyzer.find_top_errors(
+    results,
+    n=20,
+    metric='cer'
+)
+
+# Generate report with visualizations
+analyzer.generate_error_report(
+    error_samples,
+    dataset_path=Path("datasets/processed/test"),
+    include_thumbnails=True,
+)
+
+# Analyze patterns
+patterns = analyzer.analyze_error_patterns(error_samples)
+# Returns: substitution patterns, insertion/deletion frequencies
+```
+
+### Bounding Box Visualization
+
+Visualize predictions with confidence-based highlighting:
+
+```python
+from utils.visualization import BBoxVisualizer
+
+visualizer = BBoxVisualizer(low_confidence_threshold=0.7)
+
+# Draw bounding boxes
+annotated = visualizer.draw_bboxes(
+    image,
+    bboxes=[
+        {'box': [x1, y1, x2, y2], 'text': '한글', 'confidence': 0.95},
+        {'box': [x3, y3, x4, y4], 'text': 'ABC', 'confidence': 0.65},  # Low conf
+    ],
+    highlight_low_confidence=True,
+)
+
+# Create comparison view
+comparison = visualizer.create_comparison_view(
+    original=original_img,
+    processed=annotated,
+    prediction="예측 텍스트",
+    ground_truth="정답 텍스트",
+    confidence=0.87,
+)
+```
+
+### High DPI Retry
+
+Automatically improve low-confidence predictions:
+
+```python
+def process_with_retry(image, model, threshold=0.8):
+    # Initial inference
+    result = model.predict(image)
+
+    if result.confidence < threshold:
+        # Retry with higher DPI
+        high_dpi_image = preprocess_image(image, dpi_scale=2.0)
+        result = model.predict(high_dpi_image)
+
+    return result
+```
+
+In the GUI, this is automatic with a single button click!
+
 ## 🧪 Testing
 
 Run tests with:
@@ -294,8 +511,14 @@ pytest tests/ -v --cov=.
 ## 📖 Documentation
 
 - **Datasets**: See [datasets/README.md](datasets/README.md)
+- **GUI**: See [gui/README.md](gui/README.md)
 - **Benchmarks**: See inline documentation in `benchmarks/run_bench.py`
 - **API Reference**: Generate with `pydoc`
+
+Run the demo:
+```bash
+python tools/demo_gui.py
+```
 
 ## 🤝 Contributing
 
@@ -329,11 +552,15 @@ To add a new model:
 - [x] Data download and cleaning pipeline
 - [x] Benchmark suite with multiple metrics
 - [x] Continuous learning automation
+- [x] Streamlit GUI with error analysis
+- [x] Audit logging system
+- [x] Bounding box visualization
+- [x] High DPI retry functionality
 - [ ] Multi-GPU training support
 - [ ] Real-time inference API
-- [ ] Web-based visualization dashboard
 - [ ] Pre-trained model zoo
 - [ ] Additional Korean datasets integration
+- [ ] Docker deployment support
 
 ## ⚡ Performance Tips
 

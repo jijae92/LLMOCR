@@ -39,6 +39,11 @@ requests>=2.27.0
 matplotlib>=3.5.0
 seaborn>=0.11.0
 
+# GUI and Web Interface
+streamlit>=1.28.0
+pandas>=1.5.0
+plotly>=5.14.0  # For interactive charts in Streamlit
+
 # Testing
 pytest>=7.0.0
 pytest-cov>=3.0.0
