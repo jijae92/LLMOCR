@@ -56,6 +56,7 @@ class WorkerThread(QThread):
     """Worker thread for long-running operations"""
     finished = pyqtSignal(bool, str, str)
     progress = pyqtSignal(int, str)
+    output_line = pyqtSignal(str)
 
     def __init__(self, command, description):
         super().__init__()
@@ -64,14 +65,57 @@ class WorkerThread(QThread):
 
     def run(self):
         try:
-            result = subprocess.run(
+            # Use Popen for real-time output
+            process = subprocess.Popen(
                 self.command,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=3600
+                bufsize=1,
+                universal_newlines=True
             )
-            success = result.returncode == 0
-            self.finished.emit(success, result.stdout, result.stderr)
+
+            stdout_lines = []
+
+            # Read output line by line
+            for line in iter(process.stdout.readline, ''):
+                if line:
+                    line = line.rstrip()
+                    stdout_lines.append(line)
+                    self.output_line.emit(line)
+
+                    # Parse progress info
+                    if line.startswith("PROGRESS:"):
+                        try:
+                            # Format: PROGRESS:current/total:percentage:eta_seconds
+                            parts = line.split(":")
+                            if len(parts) >= 4:
+                                current_total = parts[1]  # e.g., "100/1000"
+                                percentage = parts[2]      # e.g., "10.0%"
+                                eta = parts[3]             # e.g., "450s"
+
+                                # Extract percentage value
+                                pct = float(percentage.replace('%', ''))
+
+                                # Format ETA message
+                                eta_sec = int(float(eta.replace('s', '')))
+                                if eta_sec > 60:
+                                    eta_min = eta_sec // 60
+                                    eta_msg = f"{current_total} ({pct:.0f}%) - 약 {eta_min}분 남음"
+                                else:
+                                    eta_msg = f"{current_total} ({pct:.0f}%) - 약 {eta_sec}초 남음"
+
+                                self.progress.emit(int(pct), eta_msg)
+                        except Exception as e:
+                            pass  # Ignore parsing errors
+
+            process.stdout.close()
+            returncode = process.wait(timeout=3600)
+
+            success = returncode == 0
+            stdout = '\n'.join(stdout_lines)
+            self.finished.emit(success, stdout, "")
+
         except Exception as e:
             self.finished.emit(False, "", str(e))
 
@@ -188,25 +232,43 @@ class DatasetManagementTab(QWidget):
         self.log_output.append(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting download...")
         self.log_output.append(f"Command: {' '.join(cmd)}\n")
 
+        # Setup progress bar with determinate range
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%p% - 준비 중...")
         self.download_btn.setEnabled(False)
 
         self.worker = WorkerThread(cmd, "Download SynthDoG-ko")
         self.worker.finished.connect(self.on_download_finished)
+        self.worker.progress.connect(self.on_download_progress)
+        self.worker.output_line.connect(self.on_output_line)
         self.worker.start()
+
+    def on_download_progress(self, percentage, message):
+        """Update progress bar with percentage and ETA"""
+        self.progress_bar.setValue(percentage)
+        self.progress_bar.setFormat(message)
+
+    def on_output_line(self, line):
+        """Display real-time output line"""
+        # Skip PROGRESS lines as they're shown in progress bar
+        if not line.startswith("PROGRESS:"):
+            self.log_output.append(line)
+            # Auto-scroll to bottom
+            self.log_output.moveCursor(QTextCursor.End)
 
     def on_download_finished(self, success, stdout, stderr):
         self.progress_bar.setVisible(False)
         self.download_btn.setEnabled(True)
 
         if success:
-            self.log_output.append("✓ Download completed successfully!\n")
-            self.log_output.append(stdout)
+            self.log_output.append("\n✓ Download completed successfully!\n")
             QMessageBox.information(self, "Success", "Dataset downloaded successfully!")
         else:
-            self.log_output.append("✗ Download failed!\n")
-            self.log_output.append(stderr)
+            self.log_output.append("\n✗ Download failed!\n")
+            if stderr:
+                self.log_output.append(stderr)
             QMessageBox.critical(self, "Error", f"Download failed:\n{stderr}")
 
     def show_aihub_instructions(self):

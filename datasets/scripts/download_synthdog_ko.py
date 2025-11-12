@@ -74,7 +74,9 @@ def download_synthdog_ko(
         next(iterator)
 
     # Process samples with progress bar
-    pbar = tqdm(total=total, desc="Downloading")
+    import time
+    start_time = time.time()
+    pbar = tqdm(total=total, desc="Downloading", ncols=100)
 
     try:
         for idx, sample in enumerate(iterator):
@@ -116,6 +118,14 @@ def download_synthdog_ko(
             annotations.append(annotation)
             count += 1
             pbar.update(1)
+
+            # Print progress info for GUI parsing (every 10 samples)
+            if count % 10 == 0 or count == total:
+                elapsed = time.time() - start_time
+                progress_pct = (count / total * 100) if total else 0
+                speed = count / elapsed if elapsed > 0 else 0
+                eta = (total - count) / speed if speed > 0 and total else 0
+                print(f"PROGRESS:{count}/{total}:{progress_pct:.1f}%:{eta:.0f}s", flush=True)
 
     except StopIteration:
         pass
