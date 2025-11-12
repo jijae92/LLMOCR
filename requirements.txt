@@ -44,6 +44,9 @@ streamlit>=1.28.0
 pandas>=1.5.0
 plotly>=5.14.0  # For interactive charts in Streamlit
 
+# Desktop GUI (PyQt5)
+PyQt5>=5.15.0  # For native desktop application
+
 # Testing
 pytest>=7.0.0
 pytest-cov>=3.0.0

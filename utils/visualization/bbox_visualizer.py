@@ -9,7 +9,7 @@ Features:
 - Add text labels with predictions
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from pathlib import Path
 
 try:

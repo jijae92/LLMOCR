@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Streamlit GUI for LLMOCR - Korean OCR Analysis & Operations
+Complete LLMOCR GUI - Korean OCR Analysis & Operations Platform
 
 Features:
-- Upload and process images
-- Visualize bounding boxes and confidence
-- High DPI retry functionality
-- Error analysis dashboard
-- Audit log viewer
-- Batch processing
+- Dataset Management: Download, clean, and process datasets
+- Benchmark Execution: Run and compare OCR benchmarks
+- Continuous Learning: Automated training and regression testing
+- Single Image Processing: Real-time OCR with visualization
+- Error Analysis: Identify and analyze common errors
+- Audit Logging: Track all operations and performance
+- Batch Processing: Process multiple images efficiently
 """
 
 import sys
@@ -19,9 +20,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 import time
+import json
+import subprocess
+import tempfile
+import shutil
 from datetime import datetime
 from PIL import Image
 import numpy as np
+import pandas as pd
 
 # Import local modules
 try:
@@ -37,7 +43,7 @@ except ImportError as e:
 
 # Page config
 st.set_page_config(
-    page_title="LLMOCR - Korean OCR Interface",
+    page_title="LLMOCR - Complete Korean OCR Platform",
     page_icon="📝",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -54,6 +60,13 @@ if 'audit_logger' not in st.session_state:
 if 'visualizer' not in st.session_state:
     st.session_state.visualizer = BBoxVisualizer()
 
+if 'datasets_downloaded' not in st.session_state:
+    st.session_state.datasets_downloaded = []
+
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
 
 def preprocess_image(
     image: Image.Image,
@@ -118,7 +131,7 @@ def mock_ocr_inference(
             {
                 'text': '테스트',
                 'box': [230, 50, 320, 80],
-                'confidence': 0.65,  # Low confidence
+                'confidence': 0.65,
             },
             {
                 'text': '문서입니다',
@@ -179,7 +192,24 @@ def process_single_image(
     }
 
 
-# Sidebar
+def run_command(cmd: list, description: str) -> tuple:
+    """Run a command and return success status and output."""
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600  # 1 hour timeout
+        )
+        return result.returncode == 0, result.stdout, result.stderr
+    except Exception as e:
+        return False, "", str(e)
+
+
+# ============================================================================
+# SIDEBAR CONFIGURATION
+# ============================================================================
+
 with st.sidebar:
     st.title("⚙️ Settings")
 
@@ -236,20 +266,544 @@ with st.sidebar:
     enable_audit_log = st.checkbox("Enable Audit Logging", value=True)
 
 
-# Main content area
-st.title("📝 LLMOCR - Korean OCR Interface")
+# ============================================================================
+# MAIN CONTENT AREA
+# ============================================================================
+
+st.title("📝 LLMOCR - Complete Korean OCR Platform")
+st.markdown("**Comprehensive data management, benchmarking, and OCR operations**")
 
 # Create tabs
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🖼️ Single Image",
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    "🗂️ Dataset Management",
+    "🔄 Data Processing",
+    "🚀 Benchmark Execution",
+    "🔁 Continuous Learning",
+    "🖼️ Single Image OCR",
     "📊 Error Analysis",
     "📋 Audit Logs",
     "⚡ Batch Processing"
 ])
 
-# Tab 1: Single Image Processing
+
+# ============================================================================
+# TAB 1: DATASET MANAGEMENT
+# ============================================================================
+
 with tab1:
-    st.header("Single Image OCR")
+    st.header("🗂️ Dataset Management")
+    st.markdown("Download and manage Korean OCR datasets")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.subheader("Download SynthDoG-ko")
+
+        synthdog_output = st.text_input(
+            "Output Directory",
+            "datasets/raw/synthdog_ko",
+            key="synthdog_output"
+        )
+
+        synthdog_limit = st.number_input(
+            "Sample Limit",
+            min_value=10,
+            max_value=100000,
+            value=1000,
+            step=100,
+            help="Number of samples to download",
+            key="synthdog_limit"
+        )
+
+        synthdog_start = st.number_input(
+            "Start Index",
+            min_value=0,
+            value=0,
+            help="Start downloading from this index",
+            key="synthdog_start"
+        )
+
+        if st.button("📥 Download SynthDoG-ko", type="primary"):
+            with st.spinner("Downloading SynthDoG-ko dataset..."):
+                cmd = [
+                    "python", "datasets/scripts/download_synthdog_ko.py",
+                    "--output_dir", synthdog_output,
+                    "--limit", str(synthdog_limit),
+                    "--start_idx", str(synthdog_start),
+                ]
+
+                success, stdout, stderr = run_command(cmd, "Download SynthDoG-ko")
+
+                if success:
+                    st.success(f"✓ Downloaded {synthdog_limit} samples to {synthdog_output}")
+                    st.session_state.datasets_downloaded.append({
+                        'name': 'synthdog_ko',
+                        'path': synthdog_output,
+                        'samples': synthdog_limit,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    with st.expander("📄 Download Log"):
+                        st.text(stdout)
+                else:
+                    st.error("❌ Download failed")
+                    st.error(stderr)
+
+    with col2:
+        st.subheader("Download AI-Hub Dataset")
+
+        st.info("""
+        **AI-Hub datasets require manual download:**
+        1. Visit [AI-Hub](https://aihub.or.kr)
+        2. Login and request dataset access
+        3. Download the dataset
+        4. Extract to `datasets/raw/aihub_<dataset_name>/`
+        """)
+
+        aihub_dataset = st.selectbox(
+            "Dataset",
+            ["admin_docs", "korean_fonts"],
+            help="Select AI-Hub dataset",
+            key="aihub_dataset"
+        )
+
+        aihub_output = st.text_input(
+            "Output Directory",
+            f"datasets/raw/aihub_{aihub_dataset}",
+            key="aihub_output"
+        )
+
+        if st.button("📋 Show Download Instructions"):
+            cmd = [
+                "python", "datasets/scripts/download_aihub.py",
+                "--dataset", aihub_dataset,
+                "--output_dir", aihub_output,
+            ]
+
+            success, stdout, stderr = run_command(cmd, "AI-Hub Instructions")
+            st.code(stdout)
+
+    # Show downloaded datasets
+    st.subheader("Downloaded Datasets")
+
+    if st.session_state.datasets_downloaded:
+        df = pd.DataFrame(st.session_state.datasets_downloaded)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No datasets downloaded yet")
+
+
+# ============================================================================
+# TAB 2: DATA PROCESSING
+# ============================================================================
+
+with tab2:
+    st.header("🔄 Data Processing")
+    st.markdown("Clean, process, and split datasets for training")
+
+    st.subheader("1. Clean Dataset")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        clean_source = st.text_input(
+            "Source Directory",
+            "datasets/raw/synthdog_ko",
+            key="clean_source"
+        )
+
+        clean_output = st.text_input(
+            "Output Directory",
+            "datasets/processed/synthdog_ko_clean",
+            key="clean_output"
+        )
+
+        clean_min_length = st.number_input("Min Text Length", 1, 100, 5)
+        clean_max_length = st.number_input("Max Text Length", 100, 10000, 1000)
+        clean_copy_images = st.checkbox("Copy/Link Images", value=True)
+
+    with col2:
+        clean_min_dim = st.number_input("Min Image Dimension", 16, 512, 32)
+        clean_blur_threshold = st.number_input("Blur Threshold", 10.0, 500.0, 100.0)
+
+        st.markdown("**Cleaning will filter out:**")
+        st.markdown("- Corrupted images")
+        st.markdown("- Images too small or blurry")
+        st.markdown("- Text too short or too long")
+        st.markdown("- Invalid or empty text")
+
+    if st.button("🧹 Clean Dataset", type="primary"):
+        with st.spinner("Cleaning dataset..."):
+            cmd = [
+                "python", "datasets/scripts/clean_data.py",
+                "--source", clean_source,
+                "--output", clean_output,
+                "--min_length", str(clean_min_length),
+                "--max_length", str(clean_max_length),
+                "--min_dimension", str(clean_min_dim),
+                "--blur_threshold", str(clean_blur_threshold),
+            ]
+
+            if clean_copy_images:
+                cmd.append("--copy_images")
+
+            success, stdout, stderr = run_command(cmd, "Clean Dataset")
+
+            if success:
+                st.success(f"✓ Dataset cleaned successfully")
+                with st.expander("📄 Cleaning Report"):
+                    st.text(stdout)
+
+                # Try to load stats
+                stats_file = Path(clean_output) / "cleaning_stats.json"
+                if stats_file.exists():
+                    with open(stats_file, 'r') as f:
+                        stats = json.load(f)
+
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Total Samples", stats.get('total', 0))
+                    col2.metric("Valid Samples", stats.get('valid', 0))
+                    col3.metric("Filtered Out", stats.get('total', 0) - stats.get('valid', 0))
+                    col4.metric("Success Rate", f"{stats.get('valid', 0) / stats.get('total', 1) * 100:.1f}%")
+            else:
+                st.error("❌ Cleaning failed")
+                st.error(stderr)
+
+    st.divider()
+
+    st.subheader("2. Create Train/Val/Test Splits")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        split_input = st.text_input(
+            "Input Directory (Cleaned Dataset)",
+            "datasets/processed/synthdog_ko_clean",
+            key="split_input"
+        )
+
+        train_ratio = st.slider("Train Ratio", 0.0, 1.0, 0.8, 0.05)
+        val_ratio = st.slider("Validation Ratio", 0.0, 1.0, 0.1, 0.05)
+        test_ratio = 1.0 - train_ratio - val_ratio
+
+        st.info(f"Test Ratio: {test_ratio:.2f}")
+
+        if train_ratio + val_ratio >= 1.0:
+            st.error("Train + Val ratio must be < 1.0")
+
+    with col2:
+        split_seed = st.number_input("Random Seed", 0, 10000, 42, help="For reproducibility")
+
+        st.markdown("**Split Configuration:**")
+        st.markdown(f"- Train: {train_ratio*100:.0f}%")
+        st.markdown(f"- Validation: {val_ratio*100:.0f}%")
+        st.markdown(f"- Test: {test_ratio*100:.0f}%")
+
+    if st.button("✂️ Create Splits", type="primary", disabled=(train_ratio + val_ratio >= 1.0)):
+        with st.spinner("Creating splits..."):
+            cmd = [
+                "python", "datasets/scripts/create_splits.py",
+                "--input", split_input,
+                "--train_ratio", str(train_ratio),
+                "--val_ratio", str(val_ratio),
+                "--seed", str(split_seed),
+            ]
+
+            success, stdout, stderr = run_command(cmd, "Create Splits")
+
+            if success:
+                st.success("✓ Splits created successfully")
+                with st.expander("📄 Split Report"):
+                    st.text(stdout)
+
+                # Try to load split stats
+                stats_file = Path(split_input) / "split_stats.json"
+                if stats_file.exists():
+                    with open(stats_file, 'r') as f:
+                        stats = json.load(f)
+
+                    st.markdown("**Split Statistics:**")
+                    for split_name, split_stats in stats.items():
+                        with st.expander(f"📊 {split_name.upper()} Split"):
+                            st.json(split_stats)
+            else:
+                st.error("❌ Split creation failed")
+                st.error(stderr)
+
+
+# ============================================================================
+# TAB 3: BENCHMARK EXECUTION
+# ============================================================================
+
+with tab3:
+    st.header("🚀 Benchmark Execution")
+    st.markdown("Run comprehensive OCR benchmarks on multiple datasets")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.subheader("Configuration")
+
+        bench_models = st.text_input(
+            "Model Paths (comma-separated)",
+            "models/baseline",
+            help="Paths to models to benchmark",
+            key="bench_models"
+        )
+
+        bench_datasets = st.text_input(
+            "Datasets (comma-separated)",
+            "synthdog_ko_clean",
+            help="Dataset names in datasets/processed/",
+            key="bench_datasets"
+        )
+
+        bench_limit = st.number_input(
+            "Sample Limit (optional)",
+            min_value=0,
+            value=0,
+            help="0 = use all samples",
+            key="bench_limit"
+        )
+
+        bench_device = st.selectbox(
+            "Device",
+            ["cuda", "cpu"],
+            key="bench_device"
+        )
+
+    with col2:
+        st.subheader("Metrics")
+        st.markdown("""
+        The benchmark will measure:
+        - **CER** (Character Error Rate)
+        - **WER** (Word Error Rate)
+        - **Throughput** (images/sec)
+        - **Latency** (p50, p95, p99)
+
+        Results will be saved in multiple formats:
+        - JSON (machine-readable)
+        - CSV (spreadsheet)
+        - Markdown (report)
+        """)
+
+    if st.button("▶️ Run Benchmark", type="primary"):
+        with st.spinner("Running benchmark... This may take a while"):
+            cmd = [
+                "python", "benchmarks/run_bench.py",
+                "--models", bench_models,
+                "--datasets", bench_datasets,
+                "--output_dir", "reports",
+                "--device", bench_device,
+            ]
+
+            if bench_limit > 0:
+                cmd.extend(["--limit", str(bench_limit)])
+
+            # Show progress
+            progress_placeholder = st.empty()
+            output_placeholder = st.empty()
+
+            success, stdout, stderr = run_command(cmd, "Run Benchmark")
+
+            if success:
+                st.success("✓ Benchmark completed successfully")
+
+                with st.expander("📄 Benchmark Output"):
+                    st.text(stdout)
+
+                # Try to find and display latest results
+                reports_dir = Path("reports")
+                result_files = sorted(reports_dir.glob("benchmark_results_*.json"))
+
+                if result_files:
+                    latest_results = result_files[-1]
+                    with open(latest_results, 'r') as f:
+                        results = json.load(f)
+
+                    st.subheader("📊 Results")
+
+                    # Convert to DataFrame
+                    df = pd.DataFrame(results)
+
+                    # Display metrics
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    if len(df) > 0:
+                        col1.metric("Avg CER", f"{df['cer'].mean():.4f}")
+                        col2.metric("Avg WER", f"{df['wer'].mean():.4f}")
+                        col3.metric("Avg Throughput", f"{df['throughput'].mean():.2f} img/s")
+                        col4.metric("Avg p95 Latency", f"{df['p95_latency'].mean():.1f} ms")
+
+                    # Display detailed table
+                    st.dataframe(df, use_container_width=True)
+
+                    # Download buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.download_button(
+                            "📥 Download JSON",
+                            latest_results.read_text(),
+                            file_name=latest_results.name,
+                            mime="application/json"
+                        )
+                    with col2:
+                        csv_data = df.to_csv(index=False)
+                        st.download_button(
+                            "📥 Download CSV",
+                            csv_data,
+                            file_name=f"benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+            else:
+                st.error("❌ Benchmark failed")
+                st.error(stderr)
+
+
+# ============================================================================
+# TAB 4: CONTINUOUS LEARNING
+# ============================================================================
+
+with tab4:
+    st.header("🔁 Continuous Learning Pipeline")
+    st.markdown("Automated training, evaluation, and regression testing")
+
+    st.info("""
+    **Continuous Learning Workflow:**
+    1. New data is processed and cleaned
+    2. Model is fine-tuned with LoRA
+    3. Benchmarks are run on test datasets
+    4. Results are compared to baseline
+    5. Model is promoted if improvements are found
+    """)
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        cl_base_model = st.text_input(
+            "Base Model Path",
+            "models/baseline",
+            key="cl_base_model"
+        )
+
+        cl_new_data = st.text_input(
+            "New Data Path",
+            "datasets/raw/new_data",
+            key="cl_new_data"
+        )
+
+        cl_dataset_name = st.text_input(
+            "Dataset Name",
+            "new_dataset",
+            help="Name for the processed dataset",
+            key="cl_dataset_name"
+        )
+
+        cl_benchmark_datasets = st.text_input(
+            "Benchmark Datasets (comma-separated)",
+            "synthdog_ko_clean",
+            key="cl_benchmark_datasets"
+        )
+
+    with col2:
+        cl_epochs = st.number_input("Training Epochs", 1, 20, 1, key="cl_epochs")
+
+        cl_regression_threshold = st.number_input(
+            "Regression Threshold",
+            0.0, 0.1, 0.02, 0.01,
+            help="CER delta threshold for detecting regressions",
+            key="cl_regression_threshold"
+        )
+
+        cl_limit = st.number_input(
+            "Sample Limit (optional)",
+            0, 10000, 0,
+            help="0 = use all samples",
+            key="cl_limit"
+        )
+
+        cl_auto_promote = st.checkbox(
+            "Auto-promote on success",
+            value=False,
+            help="Automatically promote model to production if improvements found",
+            key="cl_auto_promote"
+        )
+
+    if st.button("🚀 Run Continuous Learning Pipeline", type="primary"):
+        with st.spinner("Running continuous learning pipeline... This will take a while"):
+            cmd = [
+                "python", "benchmarks/continuous_learning.py",
+                "--base_model", cl_base_model,
+                "--new_data", cl_new_data,
+                "--dataset_name", cl_dataset_name,
+                "--benchmark_datasets", cl_benchmark_datasets,
+                "--epochs", str(cl_epochs),
+                "--regression_threshold", str(cl_regression_threshold),
+            ]
+
+            if cl_limit > 0:
+                cmd.extend(["--limit", str(cl_limit)])
+
+            if cl_auto_promote:
+                cmd.append("--auto_promote")
+
+            success, stdout, stderr = run_command(cmd, "Continuous Learning")
+
+            if success:
+                st.success("✓ Continuous learning pipeline completed")
+
+                with st.expander("📄 Pipeline Output"):
+                    st.text(stdout)
+
+                # Try to find latest pipeline report
+                experiments_dir = Path("models/experiments")
+                report_files = sorted(experiments_dir.glob("pipeline_report_*.json"))
+
+                if report_files:
+                    latest_report = report_files[-1]
+                    with open(latest_report, 'r') as f:
+                        report = json.load(f)
+
+                    st.subheader("📊 Pipeline Report")
+
+                    regression_report = report.get('regression_report', {})
+
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Improvements", len(regression_report.get('improvements', [])))
+                    col2.metric("Regressions", len(regression_report.get('regressions', [])))
+                    col3.metric(
+                        "Status",
+                        "✓ PASS" if regression_report.get('overall_improvement') else "✗ FAIL"
+                    )
+
+                    # Show improvements
+                    if regression_report.get('improvements'):
+                        st.success("**Improvements Found:**")
+                        for imp in regression_report['improvements']:
+                            st.markdown(f"- **{imp['dataset']}**: {imp['baseline_cer']:.4f} → {imp['new_cer']:.4f} ({imp['delta']:+.4f})")
+
+                    # Show regressions
+                    if regression_report.get('regressions'):
+                        st.error("**Regressions Detected:**")
+                        for reg in regression_report['regressions']:
+                            st.markdown(f"- **{reg['dataset']}**: {reg['baseline_cer']:.4f} → {reg['new_cer']:.4f} ({reg['delta']:+.4f})")
+
+                    st.download_button(
+                        "📥 Download Full Report",
+                        json.dumps(report, indent=2),
+                        file_name=latest_report.name,
+                        mime="application/json"
+                    )
+            else:
+                st.error("❌ Pipeline failed")
+                st.error(stderr)
+
+
+# ============================================================================
+# TAB 5: SINGLE IMAGE OCR (from original GUI)
+# ============================================================================
+
+with tab5:
+    st.header("🖼️ Single Image OCR")
 
     col1, col2 = st.columns([1, 1])
 
@@ -392,8 +946,12 @@ with tab1:
                         st.session_state.latest_results = retry_results
                     st.rerun()
 
-# Tab 2: Error Analysis
-with tab2:
+
+# ============================================================================
+# TAB 6: ERROR ANALYSIS (from original GUI)
+# ============================================================================
+
+with tab6:
     st.header("📊 Error Analysis Dashboard")
 
     st.markdown("""
@@ -409,8 +967,6 @@ with tab2:
     )
 
     if results_file:
-        import json
-
         results_data = json.load(results_file)
 
         # Create analyzer
@@ -471,8 +1027,12 @@ with tab2:
             for pattern, count in list(patterns['substitution_patterns'].items())[:10]:
                 st.write(f"- `{pattern}`: {count} occurrences")
 
-# Tab 3: Audit Logs
-with tab3:
+
+# ============================================================================
+# TAB 7: AUDIT LOGS (from original GUI)
+# ============================================================================
+
+with tab7:
     st.header("📋 Audit Logs")
 
     st.markdown("""
@@ -526,8 +1086,6 @@ with tab3:
             st.subheader("Recent Entries")
 
             # Convert to dataframe for display
-            import pandas as pd
-
             df_data = []
             for entry in entries[-20:]:  # Last 20 entries
                 df_data.append({
@@ -552,8 +1110,12 @@ with tab3:
                 )
                 st.success(f"✓ Report exported to {report_path}")
 
-# Tab 4: Batch Processing
-with tab4:
+
+# ============================================================================
+# TAB 8: BATCH PROCESSING (from original GUI)
+# ============================================================================
+
+with tab8:
     st.header("⚡ Batch Processing")
 
     st.markdown("""
@@ -577,6 +1139,13 @@ with tab4:
 
             results_list = []
 
+            engine_map = {
+                "PyTorch": EngineType.PYTORCH,
+                "ONNX": EngineType.ONNX,
+                "OpenVINO": EngineType.OPENVINO,
+                "TensorRT": EngineType.TENSORRT,
+            }
+
             for idx, uploaded_file in enumerate(uploaded_files):
                 status_text.text(f"Processing {idx+1}/{len(uploaded_files)}: {uploaded_file.name}")
 
@@ -588,7 +1157,7 @@ with tab4:
                     model_name=model_name,
                     model_version="v1.0.0",
                     model_path=f"models/{model_name}",
-                    engine=EngineType.PYTORCH,
+                    engine=engine_map[engine],
                 )
 
                 results = process_single_image(image, preprocess_params, model_info)
@@ -607,7 +1176,6 @@ with tab4:
             # Show results
             st.subheader("Batch Results")
 
-            import pandas as pd
             df = pd.DataFrame(results_list)
             st.dataframe(df, use_container_width=True)
 
@@ -616,17 +1184,22 @@ with tab4:
             st.download_button(
                 "📥 Download Results (CSV)",
                 csv,
-                "batch_results.csv",
+                f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 "text/csv",
                 key='download-csv'
             )
 
-# Footer
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+
 st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center'>
-        <p>LLMOCR v1.0.0 | Korean OCR Analysis & Operations Interface</p>
+        <p>LLMOCR v2.0.0 | Complete Korean OCR Analysis & Operations Platform</p>
+        <p>Dataset Management • Benchmarking • Continuous Learning • OCR Operations</p>
     </div>
     """,
     unsafe_allow_html=True
